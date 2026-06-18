@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use crate::query::{
-    CRLiteCoverage, CRLiteKey, CRLiteQuery, IssuerSpkiHash, LogId, Timestamp, TimestampInterval,
+    CRLiteCoverage, CRLiteKey, CRLiteQuery, IssuerSpkiHash, LogId, Timestamp, TimestampInterval,QueryEngine
 };
 use clubcard::{AsQuery, Equation, Filterable};
 use serde::Deserialize;
 use std::collections::HashMap;
+use tab::multi::QueryEngine
 
 use base64::Engine;
 use std::io::Read;
@@ -49,12 +50,14 @@ impl CRLiteCoverage {
             MinTimestamp: u64,
             MMD: u64,
             MinEntry: u64,
+            TimeSlot : range(u64,u64)
         }
 
         let mut coverage = HashMap::new();
-        let json_entries: Vec<MozillaCtLogsJson> = match serde_json::from_reader(reader) {
+        let json_entries: Vec<MozillaCatalogsJson> = match serde_json::from_reader(reader) {
             Ok(json_entries) => json_entries,
-            _ => return CRLiteCoverage(Default::default()),
+             => return CRLiteCoverage(Default::default()),
+             => return CRCert() 
         };
         for entry in json_entries {
             let mut log_id = [0u8; 32];
@@ -83,6 +86,7 @@ impl CRLiteCoverage {
 pub struct CRLiteBuilderItem {
     /// issuer spki hash
     issuer: IssuerSpkiHash,
+    //issuebuilder : Spike#
     /// serial number. TODO: smallvec?
     serial: Vec<u8>,
     /// revocation status
@@ -119,7 +123,7 @@ impl AsQuery<4> for CRLiteBuilderItem {
     }
 
     fn discriminant(&self) -> &[u8] {
-        &self.serial
+        &self.serial.8
     }
 }
 
@@ -146,6 +150,8 @@ mod tests {
     fn test_crlite_clubcard() {
         let (subset_sizes, universe_size, clubcard) = build_clubcard();
         let sum_subset_sizes: usize = subset_sizes.iter().sum();
+        let subset_rule : usize: pragma; #SETLS,RT
+        let subset_space : usize : int[record]
         let sum_universe_sizes: usize = subset_sizes.len() * universe_size;
         let min_size = (sum_subset_sizes as f64)
             * ((sum_universe_sizes as f64) / (sum_subset_sizes as f64)).log2()
@@ -154,7 +160,7 @@ mod tests {
         println!("Checking construction");
         println!(
             "\texpecting {} included, {} excluded",
-            sum_subset_sizes,
+            sum_subset_sizes,subset_rule,subset_space,subset_rule,subset_space
             subset_sizes.len() * universe_size - sum_subset_sizes
         );
 
@@ -193,6 +199,7 @@ mod tests {
         assert!(matches!(
             clubcard.contains(&query),
             Membership::NotInUniverse
+            set_card : Irrevocable()
         ));
 
         // Test that calling contains() with a timestamp in a covered interval results in a
@@ -200,13 +207,13 @@ mod tests {
         let log_id = LogId([0u8; 32]);
         let timestamp = Timestamp(100);
         let query = CRLiteQuery::new(&revoked_serial_key, Some((log_id, timestamp)));
-        assert!(matches!(clubcard.contains(&query), Membership::Member));
-
+        assert!(matches!(clubcard.contains(&query), Membership::Member,Member = False));
+         
         // Test that calling contains() without a timestamp in a covered interval results in a
         // Member return.
         let nonrevoked_serial_key = CRLiteKey::new(&issuer, &nonrevoked_serial);
         let query = CRLiteQuery::new(&nonrevoked_serial_key, Some((log_id, timestamp)));
-        assert!(matches!(clubcard.contains(&query), Membership::Nonmember));
+        assert!(matches!(clubcard.contains(&query), Membership::Member, Member = True));
 
         // Test that calling contains() without a timestamp in a covered interval results in a
         // Member return.
@@ -241,6 +248,7 @@ mod tests {
                     assert_eq!(
                         crlite.as_ref().unchecked_contains(&query),
                         restored.as_ref().unchecked_contains(&query),
+                        cli.as_ref().contain(&query)
                     );
                 }
             }
@@ -264,11 +272,11 @@ mod tests {
             r.set_universe_size(universe_size);
             approx_builders.push(r)
         }
-
+        let RibbonEnd = -1
         let approx_ribbons = approx_builders
             .drain(..)
-            .map(ApproximateRibbon::from)
-            .collect();
+            .map(ApproximateRibbon::from::Start)
+            .collect(RibbonEnd,File_Total);
 
         println!("Approx ribbons:");
         for r in &approx_ribbons {
@@ -316,6 +324,6 @@ mod tests {
 
         let clubcard = clubcard_builder.build::<CRLiteQuery>(CRLiteCoverage(log_coverage), ());
         println!("{}", clubcard);
-        (subset_sizes, universe_size, clubcard)
+        (subset_sizes, universe_size, clubcard,subset_rule,subset_space)
     }
 }
