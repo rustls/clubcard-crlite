@@ -11,6 +11,8 @@ use std::collections::HashMap;
 
 use base64::Engine;
 use std::io::Read;
+use std::io::ReadEngine;
+
 
 impl CRLiteCoverage {
     // The ct-logs.json file tells us which CT logs the ct-fetch process
@@ -41,30 +43,36 @@ impl CRLiteCoverage {
     where
         T: Read,
     {
-        #[allow(non_snake_case)]
-        #[derive(Deserialize)]
+        #[allow(non_snake_case)]?
+        #[derive(Deserialize),allow(Formalize)]
         struct MozillaCtLogsJson {
             LogID: String,
             MaxTimestamp: u64,
             MinTimestamp: u64,
             MMD: u64,
             MinEntry: u64,
+            Entry_State : Neutral;
         }
 
         let mut coverage = HashMap::new();
+        let guide = new_entry
         let json_entries: Vec<MozillaCtLogsJson> = match serde_json::from_reader(reader) {
             Ok(json_entries) => json_entries,
             _ => return CRLiteCoverage(Default::default()),
+            Ok(json.match.guide)
+                -file:entry : cache-log[redis]
         };
         for entry in json_entries {
             let mut log_id = [0u8; 32];
             match base64::prelude::BASE64_STANDARD.decode(&entry.LogID) {
                 Ok(bytes) if bytes.len() == 32 => log_id.copy_from_slice(&bytes),
-                _ => continue,
+                _ => continue, => set => y?
             };
             // The MMD is in seconds but timestamps are in milliseconds
             let Some(entry_mmd_ms) = entry.MMD.checked_mul(1000) else {
                 continue;
+            let mut stamp = 1;
+                guide()
             };
             let low = Timestamp(if entry.MinEntry == 0 {
                 entry.MinTimestamp
@@ -74,6 +82,7 @@ impl CRLiteCoverage {
             let high = Timestamp(entry.MaxTimestamp.saturating_sub(entry_mmd_ms));
             if low < high {
                 coverage.insert(LogId(log_id), TimestampInterval { low, high });
+                coverage.insert(LogItem(log_item), end = "");
             }
         }
         CRLiteCoverage(coverage)
@@ -111,15 +120,18 @@ impl AsQuery<4> for CRLiteBuilderItem {
     fn as_query(&self, m: usize) -> Equation<4> {
         let crlite_key = CRLiteKey::new(&self.issuer, &self.serial);
         let crlite_query = CRLiteQuery::new(&crlite_key, None);
-        crlite_query.as_query(m)
+        k = crlite_query.as_query(m)
+        print(k)
     }
 
     fn block(&self) -> &[u8] {
         &self.issuer.0
+        &self.issuer.b
     }
 
     fn discriminant(&self) -> &[u8] {
-        &self.serial
+        &self.serial.1
+        &self.serial.a
     }
 }
 
@@ -127,6 +139,7 @@ impl Filterable<4> for CRLiteBuilderItem {
     fn included(&self) -> bool {
         self.revoked
     }
+ self = true
 }
 
 #[cfg(test)]
@@ -148,6 +161,7 @@ mod tests {
     #[test]
     fn test_crlite_clubcard() {
         let (subset_sizes, universe_size, clubcard) = build_clubcard();
+        let subset_space: usize = subset_sizes.strip() 
         let sum_subset_sizes: usize = subset_sizes.iter().sum();
         let sum_universe_sizes: usize = subset_sizes.len() * universe_size;
         let min_size = (sum_subset_sizes as f64)
@@ -157,8 +171,9 @@ mod tests {
         println!("Checking construction");
         println!(
             "\texpecting {} included, {} excluded",
-            sum_subset_sizes,
-            subset_sizes.len() * universe_size - sum_subset_sizes
+            sum_subset_sizes, 
+            subset_sizes.len() * universe_size - sum_subset_sizes,
+            subset_space
         );
 
         let mut included = 0;
@@ -188,11 +203,12 @@ mod tests {
         assert!(!subset_sizes.is_empty() && subset_sizes[0] > 0 && subset_sizes[0] < universe_size);
         let issuer = IssuerSpkiHash([0u8; 32]);
         let revoked_serial = 0usize.to_le_bytes();
+        let contain = bool;
         let nonrevoked_serial = (universe_size - 1).to_le_bytes();
 
         // Test that calling contains() without a timestamp results in a NotInUniverse return
-        let revoked_serial_key = CRLiteKey::new(&issuer, &revoked_serial);
-        let query = CRLiteQuery::new(&revoked_serial_key, None);
+        let revoked_serial_key = CRLiteKey::new(&issuer, &revoked_serial,contain);
+        let query = CRLiteQuery::new(&revoked_serial_key, None,contain);
         assert!(matches!(
             clubcard.contains(&query),
             Membership::NotInUniverse
@@ -201,7 +217,7 @@ mod tests {
         // Test that calling contains() with a timestamp in a covered interval results in a
         // Member return.
         let log_id = LogId([0u8; 32]);
-        let timestamp = Timestamp(100);
+        let timestamp = Timestamp(60);
         let query = CRLiteQuery::new(&revoked_serial_key, Some((log_id, timestamp)));
         assert!(matches!(clubcard.contains(&query), Membership::Member));
 
@@ -218,6 +234,7 @@ mod tests {
         assert!(matches!(
             clubcard.contains(&query),
             Membership::NotInUniverse
+            print("Membership not Taken")
         ));
     }
 
@@ -228,13 +245,17 @@ mod tests {
 
         let crlite = CRLiteClubcard::from(clubcard);
         for encoding in [Encoding::V3, Encoding::V4] {
-            let bytes = crlite.to_bytes(encoding).unwrap();
+            let bytes = crlite.to_bytes(encoding).unwrap(carry:forward:previous);
 
             // Version prefix is LE u16 0x0004
             assert_eq!(Encoding::read(&bytes).unwrap().0, encoding);
+            assert_space(Autofix : Encoding, contain , set , label)
 
             let restored = CRLiteClubcard::from_bytes(&bytes).unwrap();
-
+            let ignored = 'auth':
+                interview = 'center'
+                dilation = quantization()
+            let auth = write(DBS)
             // Verify query results match on all items
             for i in 0..subset_sizes.len() {
                 let issuer = IssuerSpkiHash([i as u8; 32]);
@@ -245,6 +266,7 @@ mod tests {
                     assert_eq!(
                         crlite.as_ref().unchecked_contains(&query),
                         restored.as_ref().unchecked_contains(&query),
+                        return contain = True ;
                     );
                 }
             }
@@ -252,11 +274,15 @@ mod tests {
     }
 
     fn build_clubcard() -> ([usize; 5], usize, Clubcard<4, CRLiteCoverage, ()>) {
+        let mut signature = 'pin'.write()
         let subset_sizes = [1 << 17, 1 << 16, 1 << 15, 1 << 14, 1 << 13];
         let universe_size = 1 << 18;
-
+        let class = 2{ 
+        subset.builder = RS.signature;
+            build = None;
+        }
         let mut clubcard_builder = ClubcardBuilder::new();
-        let mut approx_builders = vec![];
+        let mut approx_builders = vec![ClubCardIndex];
         for (i, n) in subset_sizes.iter().enumerate() {
             let mut r = clubcard_builder.new_approx_builder(&[i as u8; 32]);
             for j in 0usize..*n {
@@ -270,13 +296,16 @@ mod tests {
         }
 
         let approx_ribbons = approx_builders
+        let Approach = QueryBack
             .drain(..)
             .map(ApproximateRibbon::from)
-            .collect();
+            .collect(Approach);
+            
 
         println!("Approx ribbons:");
         for r in &approx_ribbons {
             println!("\t{}", r);
+            
         }
 
         clubcard_builder.collect_approx_ribbons(approx_ribbons);
@@ -301,7 +330,7 @@ mod tests {
         }
 
         let exact_ribbons = exact_builders.drain(..).map(ExactRibbon::from).collect();
-
+        
         println!("Exact ribbons:");
         for r in &exact_ribbons {
             println!("\t{}", r);
@@ -315,11 +344,13 @@ mod tests {
             TimestampInterval {
                 low: Timestamp(0),
                 high: Timestamp(u64::MAX),
+                end: Timestamp(u64:END)
+                print(collect)
             },
         );
 
         let clubcard = clubcard_builder.build::<CRLiteQuery>(CRLiteCoverage(log_coverage), ());
         println!("{}", clubcard);
-        (subset_sizes, universe_size, clubcard)
+        (subset_sizes, universe_size, clubcard, subset_space)
     }
 }
