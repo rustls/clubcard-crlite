@@ -6,7 +6,9 @@ use crate::query::{CRLiteCoverage, ClubcardError};
 /// A type with a TLS-like binary encoding.
 pub(crate) trait Codec: Sized {
     /// Append the encoded form of `self` to `buf`.
-    fn encode(&self, buf: &mut Vec<u8>);
+    ///
+    /// Fails if a length or item count does not fit in its length prefix.
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError>;
 
     /// Parse one value of `Self` from the front of `buf`.
     ///
@@ -26,16 +28,16 @@ pub(crate) trait Codec: Sized {
 // where `FilterColumn` is `uint64 words<count>` (a uint32 count followed by
 // that many big-endian words).
 impl Codec for Clubcard<W, CRLiteCoverage, ()> {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        self.universe.encode(buf);
-        self.index.encode(buf);
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
+        self.universe.encode(buf)?;
+        self.index.encode(buf)?;
 
-        encode_len::<1>(self.approx_filter.len(), buf);
+        encode_len::<1>(self.approx_filter.len(), buf)?;
         for column in &self.approx_filter {
-            encode_seq::<4, u64>(column, buf);
+            encode_seq::<4, u64>(column, buf)?;
         }
 
-        encode_seq::<4, u64>(&self.exact_filter, buf);
+        encode_seq::<4, u64>(&self.exact_filter, buf)
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -82,18 +84,20 @@ impl Codec for Clubcard<W, CRLiteCoverage, ()> {
 // } ClubcardIndexEntry;
 // ```
 impl Codec for ClubcardIndexEntry {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        (self.approx_filter_m as u32).encode(buf);
-        (self.approx_filter_rank as u8).encode(buf);
-        (self.approx_filter_offset as u32).encode(buf);
-        (self.exact_filter_m as u32).encode(buf);
-        (self.exact_filter_offset as u32).encode(buf);
-        (self.inverted as u8).encode(buf);
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
+        (self.approx_filter_m as u32).encode(buf)?;
+        (self.approx_filter_rank as u8).encode(buf)?;
+        (self.approx_filter_offset as u32).encode(buf)?;
+        (self.exact_filter_m as u32).encode(buf)?;
+        (self.exact_filter_offset as u32).encode(buf)?;
+        (self.inverted as u8).encode(buf)?;
 
-        encode_len::<2>(self.exceptions.len(), buf);
+        encode_len::<2>(self.exceptions.len(), buf)?;
         for serial in &self.exceptions {
-            encode_vec::<1>(serial, buf);
+            encode_vec::<1>(serial, buf)?;
         }
+
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -129,8 +133,9 @@ impl Codec for ClubcardIndexEntry {
 
 // `uint64`, big-endian.
 impl Codec for u64 {
-    fn encode(&self, buf: &mut Vec<u8>) {
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
         buf.extend_from_slice(&self.to_be_bytes());
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -143,8 +148,9 @@ impl Codec for u64 {
 
 // `uint32`, big-endian.
 impl Codec for u32 {
-    fn encode(&self, buf: &mut Vec<u8>) {
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
         buf.extend_from_slice(&self.to_be_bytes());
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -157,8 +163,9 @@ impl Codec for u32 {
 
 // `uint8`.
 impl Codec for u8 {
-    fn encode(&self, buf: &mut Vec<u8>) {
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
         buf.push(*self);
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -170,8 +177,24 @@ impl Codec for u8 {
 }
 
 /// Append an `N`-byte big-endian length (or item count) prefix.
-pub(crate) fn encode_len<const N: usize>(len: usize, buf: &mut Vec<u8>) {
-    buf.extend_from_slice(&len.to_be_bytes()[size_of::<usize>() - N..]);
+///
+/// Fails if `len` does not fit in `N` bytes.
+pub(crate) fn encode_len<const N: usize>(
+    len: usize,
+    buf: &mut Vec<u8>,
+) -> Result<(), ClubcardError> {
+    let bytes = len.to_be_bytes();
+    let (overflow, prefix) = bytes.split_at(size_of::<usize>() - N);
+    for &byte in overflow {
+        if byte != 0 {
+            return Err(ClubcardError::Serialize(
+                format!("length {len} does not fit in a {N}-byte prefix").into(),
+            ));
+        }
+    }
+
+    buf.extend_from_slice(prefix);
+    Ok(())
 }
 
 /// Read an `N`-byte big-endian length (or item count) prefix.
@@ -188,9 +211,13 @@ pub(crate) fn read_len<const N: usize>(buf: &[u8]) -> Result<(usize, &[u8]), Clu
 }
 
 /// opaque content<0..2^(8*N)-1>: an `N`-byte byte-length prefix followed by the bytes.
-pub(crate) fn encode_vec<const N: usize>(content: &[u8], buf: &mut Vec<u8>) {
-    encode_len::<N>(content.len(), buf);
+pub(crate) fn encode_vec<const N: usize>(
+    content: &[u8],
+    buf: &mut Vec<u8>,
+) -> Result<(), ClubcardError> {
+    encode_len::<N>(content.len(), buf)?;
     buf.extend_from_slice(content);
+    Ok(())
 }
 
 pub(crate) fn read_vec<const N: usize>(buf: &[u8]) -> Result<(&[u8], &[u8]), ClubcardError> {
@@ -201,11 +228,16 @@ pub(crate) fn read_vec<const N: usize>(buf: &[u8]) -> Result<(&[u8], &[u8]), Clu
 }
 
 /// `T items<count>`: an `N`-byte item *count* prefix followed by that many encoded `T`s.
-pub(crate) fn encode_seq<const N: usize, T: Codec>(items: &[T], buf: &mut Vec<u8>) {
-    encode_len::<N>(items.len(), buf);
+pub(crate) fn encode_seq<const N: usize, T: Codec>(
+    items: &[T],
+    buf: &mut Vec<u8>,
+) -> Result<(), ClubcardError> {
+    encode_len::<N>(items.len(), buf)?;
     for item in items {
-        item.encode(buf);
+        item.encode(buf)?;
     }
+
+    Ok(())
 }
 
 /// Read `u64 items<count>` sequence; a `u32` item *count* prefix followed by that many `u64`s.
@@ -230,4 +262,56 @@ pub(crate) fn read_u64_seq(buf: &[u8]) -> Result<(Vec<u64>, &[u8]), ClubcardErro
     }));
 
     Ok((items, rest))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_len_rejects_oversized_lengths() {
+        let mut buf = Vec::new();
+        encode_len::<1>(u8::MAX as usize, &mut buf).unwrap();
+        assert_eq!(buf, [0xff]);
+        assert!(encode_len::<1>(u8::MAX as usize + 1, &mut Vec::new()).is_err());
+
+        let mut buf = Vec::new();
+        encode_len::<2>(u16::MAX as usize, &mut buf).unwrap();
+        assert_eq!(buf, [0xff, 0xff]);
+        assert!(encode_len::<2>(u16::MAX as usize + 1, &mut Vec::new()).is_err());
+    }
+
+    #[test]
+    fn index_entry_rejects_oversized_serial() {
+        let mut entry = ClubcardIndexEntry {
+            approx_filter_m: 0,
+            approx_filter_rank: 0,
+            approx_filter_offset: 0,
+            exact_filter_m: 0,
+            exact_filter_offset: 0,
+            inverted: false,
+            exceptions: vec![vec![0u8; u8::MAX as usize]],
+        };
+        entry.encode(&mut Vec::new()).unwrap();
+
+        entry.exceptions = vec![vec![0u8; u8::MAX as usize + 1]];
+        assert!(entry.encode(&mut Vec::new()).is_err());
+    }
+
+    #[test]
+    fn index_entry_rejects_oversized_exception_count() {
+        let mut entry = ClubcardIndexEntry {
+            approx_filter_m: 0,
+            approx_filter_rank: 0,
+            approx_filter_offset: 0,
+            exact_filter_m: 0,
+            exact_filter_offset: 0,
+            inverted: false,
+            exceptions: vec![Vec::new(); u16::MAX as usize],
+        };
+        entry.encode(&mut Vec::new()).unwrap();
+
+        entry.exceptions = vec![Vec::new(); u16::MAX as usize + 1];
+        assert!(entry.encode(&mut Vec::new()).is_err());
+    }
 }

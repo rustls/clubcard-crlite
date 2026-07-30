@@ -28,8 +28,9 @@ pub struct LogId(pub [u8; 32]);
 
 // opaque LogId[32]: a fixed-width 32-byte SHA-256 digest, no length prefix.
 impl Codec for LogId {
-    fn encode(&self, buf: &mut Vec<u8>) {
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
         buf.extend_from_slice(&self.0);
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -52,8 +53,8 @@ impl Timestamp {
 
 // uint64 Timestamp, big-endian (see the u64 Codec impl).
 impl Codec for Timestamp {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        self.0.encode(buf);
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
+        self.0.encode(buf)
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -72,9 +73,9 @@ pub struct TimestampInterval {
 //     Timestamp high;
 // } TimestampInterval;
 impl Codec for TimestampInterval {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        self.low.encode(buf);
-        self.high.encode(buf);
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
+        self.low.encode(buf)?;
+        self.high.encode(buf)
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -100,12 +101,14 @@ impl CRLiteCoverage {
 //
 // Coverage coverage<count>;   // uint16 count, then `count` entries
 impl Codec for CRLiteCoverage {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        encode_len::<2>(self.0.len(), buf);
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
+        encode_len::<2>(self.0.len(), buf)?;
         for (log_id, interval) in &self.0 {
-            log_id.encode(buf);
-            interval.encode(buf);
+            log_id.encode(buf)?;
+            interval.encode(buf)?;
         }
+
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -130,12 +133,14 @@ impl Codec for CRLiteCoverage {
 //
 // IndexEntry index<count>;   // uint32 count, then `count` entries
 impl Codec for ClubcardIndex {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        encode_len::<4>(self.len(), buf);
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
+        encode_len::<4>(self.len(), buf)?;
         for (block_id, entry) in self {
             buf.extend_from_slice(block_id);
-            entry.encode(buf);
+            entry.encode(buf)?;
         }
+
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
@@ -387,13 +392,13 @@ impl CRLiteClubcard {
     /// Serialize this clubcard.
     pub fn to_bytes(&self, encoding: Encoding) -> Result<Vec<u8>, ClubcardError> {
         let mut out = Vec::with_capacity(2 + self.0.approximate_size_of());
-        encoding.encode(&mut out);
+        encoding.encode(&mut out)?;
 
         match encoding {
             #[cfg(feature = "bincode")]
             Encoding::V3 => bincode::serialize_into(&mut out, &self.0)
                 .map_err(|error| ClubcardError::Serialize(error.into()))?,
-            Encoding::V4 => self.0.encode(&mut out),
+            Encoding::V4 => self.0.encode(&mut out)?,
         }
 
         Ok(out)
@@ -467,9 +472,10 @@ pub enum Encoding {
 }
 
 impl Codec for Encoding {
-    fn encode(&self, buf: &mut Vec<u8>) {
+    fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
         buf.push(*self as u8);
         buf.push(0); // reserved0
+        Ok(())
     }
 
     fn read(buf: &[u8]) -> Result<(Self, &[u8]), ClubcardError> {
