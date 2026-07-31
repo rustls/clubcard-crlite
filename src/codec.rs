@@ -85,15 +85,33 @@ impl Codec for Clubcard<W, CRLiteCoverage, ()> {
 // ```
 impl Codec for ClubcardIndexEntry {
     fn encode(&self, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
-        (self.approx_filter_m as u32).encode(buf)?;
-        (self.approx_filter_rank as u8).encode(buf)?;
-        (self.approx_filter_offset as u32).encode(buf)?;
-        (self.exact_filter_m as u32).encode(buf)?;
-        (self.exact_filter_offset as u32).encode(buf)?;
-        (self.inverted as u8).encode(buf)?;
+        let Self {
+            approx_filter_m,
+            approx_filter_rank,
+            approx_filter_offset,
+            exact_filter_m,
+            exact_filter_offset,
+            inverted,
+            exceptions,
+        } = self;
 
-        encode_len::<2>(self.exceptions.len(), buf)?;
-        for serial in &self.exceptions {
+        encode_usize_as_u32(*approx_filter_m, "approx_filter_m", buf)?;
+        match u8::try_from(*approx_filter_rank) {
+            Ok(rank) => rank.encode(buf)?,
+            Err(_) => {
+                return Err(ClubcardError::Serialize(
+                    format!("approx_filter_rank value {approx_filter_rank} does not fit in u8")
+                        .into(),
+                ));
+            }
+        }
+        encode_usize_as_u32(*approx_filter_offset, "approx_filter_offset", buf)?;
+        encode_usize_as_u32(*exact_filter_m, "exact_filter_m", buf)?;
+        encode_usize_as_u32(*exact_filter_offset, "exact_filter_offset", buf)?;
+
+        u8::from(*inverted).encode(buf)?;
+        encode_len::<2>(exceptions.len(), buf)?;
+        for serial in exceptions {
             encode_vec::<1>(serial, buf)?;
         }
 
@@ -262,6 +280,18 @@ pub(crate) fn read_u64_seq(buf: &[u8]) -> Result<(Vec<u64>, &[u8]), ClubcardErro
     }));
 
     Ok((items, rest))
+}
+
+/// Encode `number` as a big-endian `uint32`.
+///
+/// Fails if `number` does not fit in a `u32`, naming `name` in the error.
+fn encode_usize_as_u32(number: usize, name: &str, buf: &mut Vec<u8>) -> Result<(), ClubcardError> {
+    match u32::try_from(number) {
+        Ok(number) => number.encode(buf),
+        Err(_) => Err(ClubcardError::Serialize(
+            format!("{name} value {number} does not fit in u32").into(),
+        )),
+    }
 }
 
 #[cfg(test)]
