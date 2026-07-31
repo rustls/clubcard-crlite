@@ -235,6 +235,7 @@ impl AsQuery<W> for CRLiteQuery<'_> {
             a[i] = x;
         }
         a[0] |= 1;
+        #[allow(clippy::cast_possible_truncation)] // s is a usize, but we only need it to be a u32
         let s = (a[3] % (max(1, m) as u64)) as usize;
         Equation::homogeneous(s, a)
     }

@@ -131,6 +131,8 @@ impl Filterable<4> for CRLiteBuilderItem {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::cast_possible_truncation)]
+
     use std::collections::HashMap;
 
     use clubcard::Clubcard;
